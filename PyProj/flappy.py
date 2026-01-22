@@ -23,6 +23,11 @@ screen = pygame.display.set_mode((screen_width, screen_height))
 pygame.display.set_caption("Flappy Bird")
 music_volume = 0.5
 sfx_volume = 0.5
+BASE_JUMP_VOL  = 0.5
+BASE_HIT_VOL   = 0.7
+BASE_POINT_VOL = 0.4
+BASE_UI_VOL    = 0.6
+
 font = pygame.font.Font("resources/font/flappy-font.ttf", 70)
 
 font2 = pygame.font.Font("resources/font/flappy-font.ttf", 40)
@@ -37,7 +42,7 @@ pipe_frequency = 1500  # pipe per milliseconds
 last_pipe = pygame.time.get_ticks() - pipe_frequency
 score = 0
 pass_pipe = False
-scroll_speed = 9
+scroll_speed = 5
 ready_done = False
 
 
@@ -97,6 +102,17 @@ def draw_fade_center(image, alpha):
     img.set_alpha(alpha)
     rect = img.get_rect(center=(screen_width // 2, screen_height // 2 - 100))
     screen.blit(img, rect)
+
+def apply_music_volume(vol):
+    pygame.mixer.music.set_volume(vol)
+
+def apply_sfx_volume(vol):
+    jump_sound.set_volume(BASE_JUMP_VOL * vol)
+    hit_sound.set_volume(BASE_HIT_VOL * vol)
+    point_sound.set_volume(BASE_POINT_VOL * vol)
+    ready.set_volume(BASE_UI_VOL * vol)
+    sett.set_volume(BASE_UI_VOL * vol)
+    goo.set_volume(BASE_UI_VOL * vol)
 
 
 def show_ready_sequence():
@@ -247,7 +263,7 @@ class Pipe(pygame.sprite.Sprite):
     def __init__(self, x, y, position):
         super().__init__()
         self.pipe_gap = pipe_gap
-        self.image_orig = pygame.image.load("resources/towers.png").convert_alpha()
+        self.image_orig = pygame.image.load("resources/pipe.png").convert_alpha()
         self.image_top = pygame.transform.flip(self.image_orig, False, True)
         self.image_bottom = self.image_orig
         if position == 1:  # top pipe
@@ -312,11 +328,16 @@ class Slider:
     def __init__(self, x, y, width, min_val, max_val, value):
         self.rect = pygame.Rect(x, y, width, 6)
         self.knob_radius = 10
+
         self.min = min_val
         self.max = max_val
         self.value = value
+
         self.dragging = False
-        self.knob_x = x + int((value - min_val) / (max_val - min_val) * width)
+
+        # Set knob position ONCE based on initial value
+        percent = (value - min_val) / (max_val - min_val)
+        self.knob_x = self.rect.left + int(percent * self.rect.width)
 
     def draw(self):
         pygame.draw.rect(screen, (200, 200, 200), self.rect)
@@ -329,20 +350,27 @@ class Slider:
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if abs(event.pos[0] - self.knob_x) <= self.knob_radius + 5:
+            mouse_x, mouse_y = event.pos
+
+  
+            if (
+                abs(mouse_x - self.knob_x) <= self.knob_radius + 5
+                and self.rect.top - 10 <= mouse_y <= self.rect.bottom + 10
+            ):
                 self.dragging = True
 
-        if event.type == pygame.MOUSEBUTTONUP:
+        elif event.type == pygame.MOUSEBUTTONUP:
             self.dragging = False
 
-        if event.type == pygame.MOUSEMOTION and self.dragging:
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
             self.knob_x = max(self.rect.left, min(event.pos[0], self.rect.right))
             percent = (self.knob_x - self.rect.left) / self.rect.width
             self.value = self.min + percent * (self.max - self.min)
 
 
+
 music_slider = Slider(screen_width // 2 - 150, 300, 300, 0.0, 1.0, music_volume)
-sfx_slider = Slider(screen_width // 2 - 150, 380, 300, 0.0, 1.0, sfx_volume)
+sfx_slider   = Slider(screen_width // 2 - 150, 380, 300, 0.0, 1.0, sfx_volume)
 
 
 # SETTINGS FUNCTION
@@ -356,19 +384,21 @@ def settings_screen():
                 sys.exit()
 
             music_slider.handle_event(event)
-            sfx_slider.handle_event(event)
+            sfx_slider.handle_event(event)  
 
         # APPLY VOLUME LIVE
         music_volume = music_slider.value
         sfx_volume = sfx_slider.value
-        pygame.mixer.music.set_volume(music_volume)
-        jump_sound.set_volume(sfx_volume)
-        hit_sound.set_volume(sfx_volume)
-        point_sound.set_volume(sfx_volume)
-        ready.set_volume(sfx_volume)
-        sett.set_volume(sfx_volume)
-        goo.set_volume(sfx_volume)
 
+        apply_music_volume(music_volume)
+        apply_sfx_volume(sfx_volume)
+
+        jump_sound.set_volume(BASE_JUMP_VOL * sfx_volume)
+        hit_sound.set_volume(BASE_HIT_VOL * sfx_volume)
+        point_sound.set_volume(BASE_POINT_VOL * sfx_volume)
+        ready.set_volume(BASE_UI_VOL * sfx_volume)
+        sett.set_volume(BASE_UI_VOL * sfx_volume)
+        goo.set_volume(BASE_UI_VOL * sfx_volume)
         # DRAW
         draw_background()
         screen.blit(menu_overlay, (0, 0))
@@ -378,10 +408,9 @@ def settings_screen():
         music_slider.draw()
         draw_text("SFX Volume", font2, white, screen_width // 2, 340)
         sfx_slider.draw()
-        draw_text(
-            f"{int(music_volume*100)}%", font2, white, screen_width // 2 + 200, 260
-        )
-        draw_text(f"{int(sfx_volume*100)}%", font2, white, screen_width // 2 + 200, 340)
+        draw_text(f"{int(music_volume * 100)}%", font2, white, screen_width // 2 + 200, 260)
+        draw_text(f"{int(sfx_volume * 100)}%",   font2, white, screen_width // 2 + 200, 340)
+
         if back_button.draw():
             current_screen = SCREEN_MENU
             return
@@ -634,23 +663,35 @@ while current_screen == SCREEN_GAME:
         bg_alpha = 0
 
     # --- GAME OVER BUTTON ---
-    if Game_over:
-        gameover.draw()
-        gameover_ui.draw()
-        main_menu.draw()
-        if button.draw():
-            # Reset everything
+if main_menu.draw():
+    fade_surface = pygame.Surface((screen_width, screen_height))
+    fade_surface.fill((0, 0, 0))
 
-            Game_over = False
-            flying = True
-            score = reset_game()
-            menu = False
-            show_ready_sequence()
-            current_bg = 0
-            next_bg = 0
-            bg_transition = False
-            bg_alpha = 0
-            fade_bg_surface = None
+    # FADE OUT
+    for alpha in range(0, 200, 5):
+        fade_surface.set_alpha(alpha)
+        # Draw current game background and sprites under fade
+        draw_background()
+        pipe_group.draw(screen)
+        bird_group.draw(screen)
+        screen.blit(ground, (ground_scroll, 768))
+        # Draw fade overlay
+        screen.blit(fade_surface, (0, 0))
+        pygame.display.update()
+        pygame.time.delay(10)  # smooth fade
 
+    # Reset everything
+    Game_over = False
+    flying = False
+    score = reset_game()
+    current_bg = 0
+    next_bg = 0
+    bg_transition = False
+    bg_alpha = 0
+    fade_bg_surface = None
+    ready_done = False
+
+    current_screen = SCREEN_MENU
+    
     # UPDATE DISPLAY
     pygame.display.update()
